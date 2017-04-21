@@ -50,6 +50,7 @@ class AOW_WorkFlow extends Basic {
 	var $flow_module;
 	var $status;
 	var $run_when;
+	var $external_table_name='external_table';
 
 	public function __construct($init=true){
 		parent::__construct();
@@ -172,7 +173,7 @@ class AOW_WorkFlow extends Basic {
             $query = '';
             $query_array = array();
 
-            $query_array['select'][] = $module->table_name.".id AS id";
+            $query_array['select'][] = $this->external_table_name.".id AS id";
             $query_array = $this->build_flow_query_where($query_array);
 
             if(!empty($query_array)){
@@ -180,7 +181,7 @@ class AOW_WorkFlow extends Basic {
                     $query .=  ($query == '' ? 'SELECT ' : ', ').$select;
                 }
 
-                $query .= ' FROM '.$module->table_name.' ';
+                $query .= ' FROM '.$module->table_name.' AS '.$this->external_table_name.' ';
 
                 if(isset($query_array['join'])){
                     foreach ($query_array['join'] as $join){
@@ -208,7 +209,7 @@ class AOW_WorkFlow extends Basic {
 
             switch ($type){
                 case 'custom':
-                    $query['join'][$name] = 'LEFT JOIN '.$module->get_custom_table_name().' '.$name.' ON '.$module->table_name.'.id = '. $name.'.id_c ';
+                    $query['join'][$name] = 'LEFT JOIN '.$module->get_custom_table_name().' '.$name.' ON '.$this->external_table_name.'.id = '. $name.'.id_c ';
                     break;
 
                 case 'relationship':
@@ -217,6 +218,8 @@ class AOW_WorkFlow extends Basic {
                         $params['join_table_alias'] = $name;
                         $join = $module->$name->getJoin($params, true);
 
+						$tmp_rhs_table=$module->$name->getRelationshipObject()->rhs_table;
+						$join['join'] = str_replace (' '.$tmp_rhs_table.'.',' '.$this->external_table_name.'.',$join['join']);
                         $query['join'][$name] = $join['join'];
                         $query['select'][] = $join['select']." AS '".$name."_id'";
                     }
@@ -251,21 +254,21 @@ class AOW_WorkFlow extends Basic {
                 switch($this->flow_run_on){
 
                     case'New_Records':
-                        $query['where'][] = $module->table_name . '.' . 'date_entered' . ' > ' . "'" .$this->date_entered."'";
+                        $query['where'][] = $this->external_table_name . '.' . 'date_entered' . ' > ' . "'" .$this->date_entered."'";
                         Break;
 
                     case'Modified_Records':
-                        $query['where'][] = $module->table_name . '.' . 'date_modified' . ' > ' . "'" .$this->date_entered."'" . ' AND ' . $module->table_name . '.' . 'date_entered' . ' <> ' . $module->table_name . '.' . 'date_modified';
+                        $query['where'][] = $this->external_table_name . '.' . 'date_modified' . ' > ' . "'" .$this->date_entered."'" . ' AND ' . $this->external_table_name . '.' . 'date_entered' . ' <> ' . $this->external_table_name . '.' . 'date_modified';
                         Break;
 
                 }
             }
 
             if(!$this->multiple_runs){
-                $query['where'][] .= "NOT EXISTS (SELECT * FROM aow_processed WHERE aow_processed.aow_workflow_id='".$this->id."' AND aow_processed.parent_id=".$module->table_name.".id AND aow_processed.status = 'Complete' AND aow_processed.deleted = 0)";
+                $query['where'][] .= "NOT EXISTS (SELECT * FROM aow_processed WHERE aow_processed.aow_workflow_id='".$this->id."' AND aow_processed.parent_id=".$this->external_table_name.".id AND aow_processed.status = 'Complete' AND aow_processed.deleted = 0)";
             }
 
-            $query['where'][] = $module->table_name.".deleted = 0 ";
+            $query['where'][] = $this->external_table_name.".deleted = 0 ";
         }
 
         return $query;
@@ -297,7 +300,40 @@ class AOW_WorkFlow extends Basic {
                 $field = $table_alias.'_cstm.'.$condition->field;
                 $query = $this->build_flow_query_join($table_alias.'_cstm', $condition_module, 'custom', $query);
             } else {
-                $field = $table_alias.'.'.$condition->field;
+                       $field = $this->external_table_name.'.'.$condition->field;
+                        $tmp_relationship_name = $condition_module->field_name_map[$condition->field]['relationship'];
+
+                       if ( ($tmp_relationship_name != '') && ($condition_module->field_name_map[$condition->field]['side'] == 'right') ) {
+                               $condition_module->load_relationship($tmp_relationship_name);
+                                       $relationship_field_name_found=false;
+                                       foreach ($condition_module->field_name_map as $field_name_map_key => $field_name_map_value) {
+                                               if (
+                                                       ($field_name_map_value['id_name'] == $condition->field)
+                                                       &&
+                                                       ($field_name_map_key != $tmp_relationship_name)
+                                               ) {
+                                                       $relationship_field_name_found = true;
+                                                       $field_name_map_key_found = $field_name_map_key;
+                                                       break;
+                                               }
+
+                                       }
+                                       if ($relationship_field_name_found) {
+
+                                       $tmp_relationship_field = $condition->field;
+                                       $tmp_relationship_lhs = $condition_module->$tmp_relationship_name->getRelationshipObject()->join_key_lhs;
+                                       $tmp_relationship_rhs = $condition_module->$tmp_relationship_name->getRelationshipObject()->join_key_rhs;
+                                       $tmp_relationship_lhs_table = $condition_module->$tmp_relationship_name->getRelationshipObject()->lhs_table;
+                                       $tmp_relationship_rhs_table = $condition_module->$tmp_relationship_name->getRelationshipObject()->rhs_table;
+                                       $tmp_relationship_join_table = $condition_module->$tmp_relationship_name->getRelationshipObject()->join_table;
+                                       $tmp_relationship_lhs_key = $condition_module->$tmp_relationship_name->getRelationshipObject()->lhs_key;
+                                       $tmp_relationship_rhs_key = $condition_module->$tmp_relationship_name->getRelationshipObject()->rhs_key;
+
+                                       $field = "(select $tmp_relationship_lhs_table.$tmp_relationship_lhs_key    from $tmp_relationship_lhs_table inner join $tmp_relationship_join_table      on $tmp_rela
+
+                                       }
+                       }
+
             }
 
             if($condition->operator == 'is_null'){
@@ -316,7 +352,7 @@ class AOW_WorkFlow extends Basic {
                         $value = $module->table_name.'_cstm.'.$condition->value;
                         $query = $this->build_flow_query_join($module->table_name.'_cstm', $module, 'custom', $query);
                     } else {
-                        $value = $module->table_name.'.'.$condition->value;
+                        $value = $this->external_table_name.'.'.$condition->value;
                     }
                     break;
                 case 'Any_Change':
@@ -344,7 +380,7 @@ class AOW_WorkFlow extends Basic {
                             $value = $module->table_name.'_cstm.'.$params[0];
                             $query = $this->build_flow_query_join($module->table_name.'_cstm', $module, 'custom', $query);
                         } else {
-                            $value = $module->table_name.'.'.$params[0];
+                            $value = $this->external_table_name.'.'.$params[0];
                         }
                     }
 
@@ -638,7 +674,7 @@ class AOW_WorkFlow extends Basic {
 
         if(isset($query_array['where'])){
 
-            $query = 'SELECT '.$bean->table_name.'.id AS id FROM '.$bean->table_name.' ';
+            $query = 'SELECT '.$this->external_table_name.'.id AS id FROM '.$bean->table_name.' AS '.$this->external_table_name.' ';
 
             if(isset($query_array['join'])){
                 foreach ($query_array['join'] as $join){
@@ -646,7 +682,7 @@ class AOW_WorkFlow extends Basic {
                 }
             }
             $query_where = '';
-            $query_array['where'][] = $bean->table_name.'.id = '."'".$bean->id."'";
+            $query_array['where'][] = $this->external_table_name.'.id = '."'".$bean->id."'";
             foreach ($query_array['where'] as $where){
                 $query_where .=  ($query_where == '' ? 'WHERE ' : ' AND ').$where;
             }
