@@ -329,7 +329,7 @@ class AOW_WorkFlow extends Basic {
                                        $tmp_relationship_lhs_key = $condition_module->$tmp_relationship_name->getRelationshipObject()->lhs_key;
                                        $tmp_relationship_rhs_key = $condition_module->$tmp_relationship_name->getRelationshipObject()->rhs_key;
 
-                                       $field = "(select $tmp_relationship_lhs_table.$tmp_relationship_lhs_key    from $tmp_relationship_lhs_table inner join $tmp_relationship_join_table      on $tmp_rela
+                                       $field = "(select $tmp_relationship_lhs_table.$tmp_relationship_lhs_key    from $tmp_relationship_lhs_table inner join $tmp_relationship_join_table      on $tmp_relationship_lhs_table.$tmp_relationship_lhs_key =  $tmp_relationship_join_table.$tmp_relationship_lhs inner join $tmp_relationship_rhs_table on $tmp_relationship_join_table.$tmp_relationship_rhs=$tmp_relationship_rhs_table.$tmp_relationship_rhs_key where $tmp_relationship_rhs_table.$tmp_relationship_rhs_key = $this->external_table_name.$tmp_relationship_lhs_key and $tmp_relationship_lhs_table.deleted=0 and $tmp_relationship_rhs_table.deleted=0 limit 1)";
 
                                        }
                        }
